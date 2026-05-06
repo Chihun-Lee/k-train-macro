@@ -326,11 +326,23 @@ class JobManager:
 manager = JobManager()
 
 
+def _force_session_timeout(session, seconds: float) -> None:
+    if getattr(session, "_kt_timeout_patched", False):
+        return
+    orig = session.request
+    def request(method, url, **kw):
+        kw.setdefault("timeout", seconds)
+        return orig(method, url, **kw)
+    session.request = request
+    session._kt_timeout_patched = True
+
+
 def search_preview(dep: str, arr: str, date: str, time_: str, train_type: str = "ktx") -> list[dict]:
     creds = config.ktx.load()
     if not creds:
         raise RuntimeError("credentials not configured")
     client = PatchedKorail(creds.ktx_id, creds.ktx_password, auto_login=False)
+    _force_session_timeout(client._session, 25)
     if not client.login():
         raise RuntimeError("login failed")
     tt = TRAIN_TYPE_MAP.get(train_type.lower(), TrainType.KTX)

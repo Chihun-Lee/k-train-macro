@@ -310,6 +310,11 @@ def search_preview(dep: str, arr: str, date: str, time_: str) -> list[dict]:
     if not creds:
         raise RuntimeError("credentials not configured")
     srt = SRT(creds.srt_id, creds.srt_password)
+    # SRTrain's session has no timeout by default; force one so a hanging
+    # NetFunnel call can't lock the search endpoint forever.
+    _force_session_timeout(srt._session, 25)
+    if hasattr(srt, "netfunnel_helper") and hasattr(srt.netfunnel_helper, "session"):
+        _force_session_timeout(srt.netfunnel_helper.session, 25)
     trains = srt.search_train(dep, arr, date, time_, available_only=False)
     out = []
     for t in trains[:25]:
@@ -320,3 +325,15 @@ def search_preview(dep: str, arr: str, date: str, time_: str) -> list[dict]:
             "special": t.special_seat_available(),
         })
     return out
+
+
+def _force_session_timeout(session, seconds: float) -> None:
+    """Wrap session.request so every HTTP call has a default timeout."""
+    if getattr(session, "_kt_timeout_patched", False):
+        return
+    orig = session.request
+    def request(method, url, **kw):
+        kw.setdefault("timeout", seconds)
+        return orig(method, url, **kw)
+    session.request = request
+    session._kt_timeout_patched = True

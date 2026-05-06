@@ -245,12 +245,30 @@ function toast(msg, ms = 1800) {
   _toastTimer = setTimeout(() => el.classList.remove("show"), ms);
 }
 
-async function api(method, path, body) {
-  const opt = { method, headers: { "Content-Type": "application/json" } };
-  if (body !== undefined) opt.body = JSON.stringify(body);
-  const r = await fetch(path, opt);
-  if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
-  return r.json();
+async function api(method, path, body, timeoutMs = 60000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const opt = {
+      method, headers: { "Content-Type": "application/json" }, signal: ctrl.signal,
+    };
+    if (body !== undefined) opt.body = JSON.stringify(body);
+    let r;
+    try {
+      r = await fetch(path, opt);
+    } catch (e) {
+      if (e.name === "AbortError") throw new Error(`timeout (${timeoutMs/1000}초)`);
+      throw new Error(`서버에 연결 실패 — ${e.message}`);
+    }
+    if (!r.ok) {
+      let detail;
+      try { detail = (await r.json()).detail; } catch { detail = r.statusText; }
+      throw new Error(`HTTP ${r.status} — ${detail || r.statusText}`);
+    }
+    return r.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ─── tab switching ────────────────────────────────────────────────────
@@ -398,7 +416,11 @@ function makeService(opts) {
   };
 
   $(p("-btn-search")).onclick = async () => {
-    $(p("-btn-search")).disabled = true;
+    const btn = $(p("-btn-search"));
+    btn.disabled = true;
+    const origLabel = btn.textContent;
+    btn.textContent = "조회 중...";
+    toast(`조회 중... (~30초)`);
     try {
       const body = { dep: $(p("-s-dep")).value, arr: $(p("-s-arr")).value,
                      date: $(p("-s-date")).value, time: $(p("-s-time")).value };
@@ -432,8 +454,12 @@ function makeService(opts) {
         tbody.appendChild(tr);
       }
       $(p("-search-table")).classList.remove("hidden");
-    } catch (e) { alert("조회 실패: " + e.message); }
-    $(p("-btn-search")).disabled = false;
+    } catch (e) {
+      alert("조회 실패: " + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = origLabel;
+    }
   };
 
   if (svc === "ktx") {
