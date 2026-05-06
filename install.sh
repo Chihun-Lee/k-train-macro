@@ -144,7 +144,13 @@ cat > "$RUN_APP/Contents/Info.plist" <<EOF
 EOF
 mkdir -p "$RUN_APP/Contents/Resources"
 if [ -f "$INSTALL_DIR/icon.png" ]; then
-  sips -s format icns "$INSTALL_DIR/icon.png" --out "$RUN_APP/Contents/Resources/icon.icns" >/dev/null 2>&1 || true
+  ICONSET="$(mktemp -d)/icon.iconset"
+  mkdir -p "$ICONSET"
+  for sz in 16 32 64 128 256 512 1024; do
+    sips -z $sz $sz "$INSTALL_DIR/icon.png" --out "$ICONSET/icon_${sz}x${sz}.png" >/dev/null 2>&1
+  done
+  iconutil -c icns "$ICONSET" -o "$RUN_APP/Contents/Resources/icon.icns" >/dev/null 2>&1 || true
+  rm -rf "$(dirname "$ICONSET")"
 fi
 
 cat > "$RUN_APP/Contents/MacOS/k-train-macro" <<EOF
