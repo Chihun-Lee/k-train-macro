@@ -25,7 +25,7 @@ import ktx_worker
 
 # PyInstaller onefile로 묶이면 정적 파일은 임시 추출 경로(_MEIPASS)에 풀린다.
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
-app = FastAPI(title="K-Train Macro (SRT + KTX, 개인용)")
+app = FastAPI(title="K-Rail Macro (SRT + KTX, 개인용)")
 
 
 @app.get("/")

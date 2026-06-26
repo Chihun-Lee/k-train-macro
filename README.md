@@ -1,4 +1,4 @@
-# 기차 매크로 (K-Train Macro)
+# K-Rail 매크로 (K-Rail Macro)
 
 **SRT + KTX 통합** 매크로. 한 화면에 두 탭, 동시 실행 가능.
 
@@ -11,12 +11,12 @@
 친구가 본인 Mac에서 **터미널을 열어** 아래 한 줄 붙여넣고 엔터:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Chihun-Lee/k-train-macro/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Chihun-Lee/k-rail-macro/main/install.sh | bash
 ```
 
-> 또는 [`기차_매크로_설치.command`](https://github.com/Chihun-Lee/k-train-macro/raw/main/기차_매크로_설치.command) 다운로드 → Finder에서 **우클릭 → 열기**
+> 또는 [`K-Rail_매크로_설치.command`](https://github.com/Chihun-Lee/k-rail-macro/raw/main/K-Rail_매크로_설치.command) 다운로드 → Finder에서 **우클릭 → 열기**
 
-설치 끝나면 **Launchpad → "기차 매크로"** 검색 → 더블클릭. 종료는 **"기차 매크로 종료"**.
+설치 끝나면 **Launchpad → "K-Rail 매크로"** 검색 → 더블클릭. 종료는 **"K-Rail 매크로 종료"**.
 
 ---
 
@@ -47,8 +47,8 @@ curl -fsSL https://raw.githubusercontent.com/Chihun-Lee/k-train-macro/main/insta
 ## 직접 빌드 / 개발
 
 ```bash
-git clone https://github.com/Chihun-Lee/k-train-macro.git
-cd k-train-macro
+git clone https://github.com/Chihun-Lee/k-rail-macro.git
+cd k-rail-macro
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt

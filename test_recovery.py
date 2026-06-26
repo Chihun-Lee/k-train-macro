@@ -86,10 +86,14 @@ def test_worker_recovers_without_wedging(monkeypatch=None):
     FakeSRT.fail_remaining = 5
     FakeSRT.successes = 0
 
+    # 워커가 RecoveryController(base=..., cap=..., fresh_login_every=...)로
+    # 인자를 넘기므로 더미도 임의 인자를 받아 결정적 값으로 덮어쓴다.
     orig_rc = srt_worker.RecoveryController
-    srt_worker.RecoveryController = lambda: orig_rc(
+    srt_worker.RecoveryController = lambda *a, **k: orig_rc(
         base=0.01, cap=0.05, fresh_login_every=2, jitter=(1.0, 1.0)
     )
+    # netfunnel helper 재생성을 더미로 (실 requests 세션 생성 방지, 결정적).
+    srt_worker.NetFunnelHelper = _FakeNF
     srt_worker.SRT = FakeSRT
     srt_worker.MIN_INTERVAL = 0.01
     srt_worker.MAX_INTERVAL = 0.01
@@ -119,6 +123,57 @@ def test_worker_recovers_without_wedging(monkeypatch=None):
     assert FakeSRT.created >= 2, f"새 세션 에스컬레이션 안 됨 (created={FakeSRT.created})"
     print(f"  [ok] 4999 5회 폭격 후 회복: recoveries={job.recoveries} "
           f"fresh_sessions={FakeSRT.created} successes={FakeSRT.successes} status={job.status}")
+
+
+class FakeSRTConnErr(FakeSRT):
+    """netfunnel 오류가 '문자열이 아닌' 예외객체를 .msg에 감싸 던지는 경우.
+
+    SRTrain은 `raise SRTNetFunnelError(ConnectionError(...))`처럼 예외객체를
+    그대로 넣는다 → str(e)가 TypeError를 던져 폴링 스레드가 통째로 죽던 버그.
+    _safe_err로 회복되는지 검증한다(사용자 보고: netfunnel ConnectionError 사망)."""
+    def search_train(self, *a, **k):
+        if FakeSRTConnErr.fail_remaining > 0:
+            FakeSRTConnErr.fail_remaining -= 1
+            raise SRTNetFunnelError(ConnectionError("Connection aborted (non-str msg)"))
+        FakeSRTConnErr.successes += 1
+        return []
+
+
+def test_worker_survives_nonstring_netfunnel_msg():
+    FakeSRTConnErr.created = 0
+    FakeSRTConnErr.fail_remaining = 4
+    FakeSRTConnErr.successes = 0
+
+    orig_rc = srt_worker.RecoveryController
+    srt_worker.RecoveryController = lambda *a, **k: orig_rc(
+        base=0.01, cap=0.05, fresh_login_every=2, jitter=(1.0, 1.0)
+    )
+    srt_worker.NetFunnelHelper = _FakeNF
+    srt_worker.SRT = FakeSRTConnErr
+    srt_worker.MIN_INTERVAL = 0.01
+    srt_worker.MAX_INTERVAL = 0.01
+    srt_worker.SESSION_MAX_AGE = 1e9
+    srt_worker.STALL_LIMIT = 1e9
+    srt_worker.config.srt.load = lambda: types.SimpleNamespace(
+        srt_id="tester", srt_password="pw"
+    )
+
+    spec = srt_worker.JobSpec(
+        dep="수서", arr="부산", date="20260701", time="090000",
+        train_number=None, passengers=1, seat_pref="any",
+        pay_mode=srt_worker.PayMode.MANUAL,
+    )
+    job = srt_worker.manager.create(spec)
+    deadline = time.time() + 5
+    while time.time() < deadline and FakeSRTConnErr.successes < 1:
+        time.sleep(0.05)
+    srt_worker.manager.stop(job.id)
+    time.sleep(0.1)
+
+    assert FakeSRTConnErr.successes >= 1, "비문자열 msg netfunnel에서 스레드 사망(버그 재현)"
+    assert job.recoveries >= 4, f"recoveries={job.recoveries}"
+    print(f"  [ok] 비문자열 msg netfunnel 4회 후 회복: recoveries={job.recoveries} "
+          f"successes={FakeSRTConnErr.successes}")
 
 
 # ── 3. HTTP 타임아웃 강제 (행 방지) ────────────────────────────────────
@@ -162,4 +217,5 @@ if __name__ == "__main__":
     test_new_client_patches_sessions()
     print("워커 자가복구 통합:")
     test_worker_recovers_without_wedging()
+    test_worker_survives_nonstring_netfunnel_msg()
     print("\nALL PASS ✅")

@@ -19,6 +19,7 @@ from typing import Deque, Optional
 
 from SRT import SRT, Adult, SeatType
 from SRT.errors import SRTError, SRTNotLoggedInError, SRTNetFunnelError
+from SRT.netfunnel import NetFunnelHelper
 
 import config
 from recovery import RecoveryController
@@ -31,6 +32,23 @@ SESSION_MAX_AGE = 600.0
 # 정상 검색이 이 시간 이상 끊기면 세션이 꼬인 것으로 보고 강제로 새 세션을 만든다.
 STALL_LIMIT = 240.0
 LOG_LIMIT = 500
+
+
+def _safe_err(e: BaseException) -> str:
+    """예외를 안전하게 문자열로 변환한다.
+
+    SRT 라이브러리는 네트워크 오류를 `raise SRTNetFunnelError(e)`로 감싸서
+    .msg에 예외 객체(문자열 아님)를 넣는다. 이 경우 SRTNetFunnelError.__str__가
+    비문자열을 반환해 `str(e)` 호출 자체가 TypeError를 던진다(폴링 스레드 사망).
+    그래서 str(e)를 직접 부르지 않고 안전하게 변환한다.
+    """
+    msg = getattr(e, "msg", None)
+    if msg is not None and not isinstance(msg, str):
+        return f"{type(e).__name__}: {msg!r}"
+    try:
+        return str(e)
+    except Exception:
+        return repr(e)
 
 
 class JobStatus(str, Enum):
@@ -143,25 +161,37 @@ class JobManager:
             session_started = time.monotonic()
         except Exception as e:
             job.status = JobStatus.ERROR
-            job.error = f"login failed: {e}"
-            job.log(f"login failed: {e}")
+            job.error = f"login failed: {_safe_err(e)}"
+            job.log(f"login failed: {_safe_err(e)}")
             return
 
         job.log(f"login ok ({creds.srt_id}); polling {job.spec.dep}->{job.spec.arr} {job.spec.date} {job.spec.time}")
         job.status = JobStatus.POLLING
 
         seat_choice = self._seat_pref_to_enum(job.spec.seat_pref)
-        rc = RecoveryController()
+        # netfunnel 차단은 두 양상이 섞여 있다: ① 대부분은 '일시적 세션 거부'라
+        # helper 세션만 새로 만들면 바로 회복된다 ② 일부는 IP 속도제한이라 빠른
+        # 재시도가 차단을 연장한다. 그래서 base를 짧게(1.5s) 잡아 초반엔 빠르게
+        # 재시도하되, 연속 실패가 쌓이면 지수적으로 물러나고 5회째 완전 새 세션으로
+        # 에스컬레이션한다(두 이론의 절충).
+        rc = RecoveryController(base=1.5, cap=30.0, fresh_login_every=5)
         last_ok = time.monotonic()
 
         def _handle_netfunnel(e: Exception) -> float:
-            """NetFunnel 차단(gRtype=4999 등) 처리. 캐시 키를 무효화하고,
-            연속 실패에 비례한 백오프 대기시간을 돌려준다. 빠른 재시도는 차단을
-            연장하므로 절대 즉시 재시도하지 않는다. 일정 횟수마다 새 세션."""
+            """NetFunnel 차단(gRtype=4999 등) 처리.
+
+            캐시 키만 비워서는 회복되지 않는다(거부된 쿠키가 helper 세션에 남기
+            때문). 그래서 helper 자체를 매번 새로 만들어 requests 세션(쿠키)과
+            캐시 키를 모두 초기화한다 — 재로그인보다 훨씬 가볍다. 그 위에 연속
+            실패 비례 백오프를 더하고, 일정 횟수마다 완전 새 세션으로 올린다."""
             nonlocal srt, session_started
-            helper = getattr(srt, "netfunnel_helper", None)
-            if helper is not None:
-                helper._cached_key = None  # 오염된 키 폐기
+            try:
+                srt.netfunnel_helper = NetFunnelHelper()
+                h = srt.netfunnel_helper
+                if hasattr(h, "session"):
+                    _force_session_timeout(h.session, 25)
+            except Exception as e2:
+                job.log(f"netfunnel helper 재생성 실패: {_safe_err(e2)}")
             rec = rc.on_error()
             job.recoveries += 1
             if rec.fresh_login:
@@ -172,11 +202,11 @@ class JobManager:
                     srt = _new_client()
                     session_started = time.monotonic()
                 except Exception as e2:
-                    job.log(f"새 세션 실패(대기 후 재시도): {e2}")
+                    job.log(f"새 세션 실패(대기 후 재시도): {_safe_err(e2)}")
             else:
                 job.log(
-                    f"netfunnel 차단 #{rec.streak} (IP 속도제한) → "
-                    f"{rec.sleep:.0f}s 백오프 후 재시도: {str(e)[:60]}"
+                    f"netfunnel 차단 #{rec.streak} → helper 재생성 + "
+                    f"{rec.sleep:.0f}s 백오프 후 재시도: {_safe_err(e)[:60]}"
                 )
             return rec.sleep
 
@@ -191,7 +221,7 @@ class JobManager:
                     srt = _new_client()
                     session_started = time.monotonic()
                 except Exception as e:
-                    job.log(f"선제 재로그인 실패: {e}")
+                    job.log(f"선제 재로그인 실패: {_safe_err(e)}")
 
             try:
                 trains = srt.search_train(
@@ -214,7 +244,7 @@ class JobManager:
                             res = srt.reserve(target, passengers=passengers, special_seat=seat)
                         except SRTError as e:
                             # raced with another buyer; keep polling
-                            job.log(f"reserve race lost: {e}")
+                            job.log(f"reserve race lost: {_safe_err(e)}")
                         else:
                             job._reservation = res
                             job.reservation_summary = str(res)
@@ -234,14 +264,18 @@ class JobManager:
                     last_ok = time.monotonic()
                     rc.on_success()
                 except Exception as e:
-                    job.log(f"재로그인 실패: {e}")
+                    job.log(f"재로그인 실패: {_safe_err(e)}")
             except SRTNetFunnelError as e:
                 next_sleep = _handle_netfunnel(e)
             except Exception as e:
-                if "NetFunnel" in str(e):
+                # SRTNetFunnelError가 SRTResponseError 등으로 감싸여 올 수 있어
+                # 타입과 메시지를 함께 본다. str(e)를 직접 부르면 비문자열 msg를
+                # 감싼 예외에서 TypeError가 나 스레드가 죽으므로 _safe_err를 쓴다.
+                err_text = _safe_err(e)
+                if isinstance(e, SRTNetFunnelError) or "NetFunnel" in err_text:
                     next_sleep = _handle_netfunnel(e)
                 else:
-                    job.log(f"poll error: {e}")
+                    job.log(f"poll error: {err_text}")
 
             # 정상 검색이 너무 오래 끊기면 세션이 꼬인 것 → 강제로 새 세션
             if next_sleep is None and time.monotonic() - last_ok > STALL_LIMIT:
@@ -253,7 +287,7 @@ class JobManager:
                     last_ok = time.monotonic()
                     rc.on_success()
                 except Exception as e:
-                    job.log(f"강제 재로그인 실패: {e}")
+                    job.log(f"강제 재로그인 실패: {_safe_err(e)}")
 
             sleep_for = next_sleep if next_sleep is not None else random.uniform(MIN_INTERVAL, MAX_INTERVAL)
             job.log(f"sleep {sleep_for:.1f}s")
@@ -303,8 +337,8 @@ class JobManager:
                 job.log("ERROR: pay_with_card returned False")
         except Exception as e:
             job.status = JobStatus.ERROR
-            job.error = f"payment error: {e}"
-            job.log(f"ERROR: payment failed: {e}")
+            job.error = f"payment error: {_safe_err(e)}"
+            job.log(f"ERROR: payment failed: {_safe_err(e)}")
 
     @staticmethod
     def _pick_target(trains, spec: JobSpec):

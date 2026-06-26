@@ -44,7 +44,7 @@ def _pause(msg: str = "\n엔터를 누르면 이 창을 닫습니다... ") -> No
 
 if __name__ == "__main__":
     print("=" * 56)
-    print("  기차 매크로 (SRT + KTX) 실행 중")
+    print("  K-Rail 매크로 (SRT + KTX) 실행 중")
     print(f"  브라우저에서 {URL} 가 열립니다.")
     print("  종료하려면 이 창을 닫거나 Ctrl+C 를 누르세요.")
     print("=" * 56)

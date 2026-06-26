@@ -1,19 +1,19 @@
 #!/bin/bash
-# K-Train (SRT + KTX) 매크로 통합 설치 스크립트 (macOS)
+# K-Rail (SRT + KTX) 매크로 통합 설치 스크립트 (macOS)
 # 사용법:
-#   curl -fsSL https://raw.githubusercontent.com/Chihun-Lee/k-train-macro/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Chihun-Lee/k-rail-macro/main/install.sh | bash
 set -e
 
-REPO="https://github.com/Chihun-Lee/k-train-macro.git"
-INSTALL_DIR="${K_TRAIN_HOME:-$HOME/.k-train-macro}"
+REPO="https://github.com/Chihun-Lee/k-rail-macro.git"
+INSTALL_DIR="${K_RAIL_HOME:-$HOME/.k-rail-macro}"
 APP_DIR="$HOME/Applications"
-RUN_APP="$APP_DIR/기차 매크로.app"
-QUIT_APP="$APP_DIR/기차 매크로 종료.app"
+RUN_APP="$APP_DIR/K-Rail 매크로.app"
+QUIT_APP="$APP_DIR/K-Rail 매크로 종료.app"
 PORT=8912
 
 echo ""
 echo "════════════════════════════════════════"
-echo "  K-Train 매크로 (SRT + KTX) 설치"
+echo "  K-Rail 매크로 (SRT + KTX) 설치"
 echo "════════════════════════════════════════"
 echo ""
 
@@ -148,12 +148,12 @@ cat > "$RUN_APP/Contents/Info.plist" <<EOF
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>기차 매크로</string>
-  <key>CFBundleDisplayName</key><string>기차 매크로</string>
-  <key>CFBundleIdentifier</key><string>com.chihunlee.k-train-macro</string>
+  <key>CFBundleName</key><string>K-Rail 매크로</string>
+  <key>CFBundleDisplayName</key><string>K-Rail 매크로</string>
+  <key>CFBundleIdentifier</key><string>com.chihunlee.k-rail-macro</string>
   <key>CFBundleVersion</key><string>1.0</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>
-  <key>CFBundleExecutable</key><string>k-train-macro</string>
+  <key>CFBundleExecutable</key><string>k-rail-macro</string>
   <key>CFBundleIconFile</key><string>icon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSUIElement</key><true/>
@@ -171,11 +171,11 @@ if [ -f "$INSTALL_DIR/icon.png" ]; then
   rm -rf "$(dirname "$ICONSET")"
 fi
 
-cat > "$RUN_APP/Contents/MacOS/k-train-macro" <<EOF
+cat > "$RUN_APP/Contents/MacOS/k-rail-macro" <<EOF
 #!/bin/bash
 INSTALL_DIR="$INSTALL_DIR"
 PORT=$PORT
-LOG="/tmp/k-train-macro.log"
+LOG="/tmp/k-rail-macro.log"
 ARCH_PREFIX="$ARCH_PREFIX"
 
 EXISTING=\$(lsof -ti tcp:\$PORT -sTCP:LISTEN 2>/dev/null)
@@ -190,15 +190,15 @@ nohup \$ARCH_PREFIX "\$INSTALL_DIR/venv/bin/python" server.py > "\$LOG" 2>&1 &
 for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
   if curl -fsS http://127.0.0.1:\$PORT/api/srt/config/status > /dev/null 2>&1; then
     open "http://127.0.0.1:\$PORT"
-    osascript -e 'display notification "SRT + KTX 탭으로 사용하세요." with title "기차 매크로 시작됨" sound name "Glass"'
+    osascript -e 'display notification "SRT + KTX 탭으로 사용하세요." with title "K-Rail 매크로 시작됨" sound name "Glass"'
     exit 0
   fi
   sleep 1
 done
 
-osascript -e 'display alert "기차 매크로 시작 실패" message "로그: /tmp/k-train-macro.log" as critical'
+osascript -e 'display alert "K-Rail 매크로 시작 실패" message "로그: /tmp/k-rail-macro.log" as critical'
 EOF
-chmod +x "$RUN_APP/Contents/MacOS/k-train-macro"
+chmod +x "$RUN_APP/Contents/MacOS/k-rail-macro"
 
 mkdir -p "$QUIT_APP/Contents/MacOS"
 cat > "$QUIT_APP/Contents/Info.plist" <<EOF
@@ -206,9 +206,9 @@ cat > "$QUIT_APP/Contents/Info.plist" <<EOF
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>기차 매크로 종료</string>
-  <key>CFBundleDisplayName</key><string>기차 매크로 종료</string>
-  <key>CFBundleIdentifier</key><string>com.chihunlee.k-train-macro-quit</string>
+  <key>CFBundleName</key><string>K-Rail 매크로 종료</string>
+  <key>CFBundleDisplayName</key><string>K-Rail 매크로 종료</string>
+  <key>CFBundleIdentifier</key><string>com.chihunlee.k-rail-macro-quit</string>
   <key>CFBundleVersion</key><string>1.0</string>
   <key>CFBundleExecutable</key><string>quit</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -223,9 +223,9 @@ PORT=$PORT
 PIDS=\$(lsof -ti tcp:\$PORT -sTCP:LISTEN 2>/dev/null)
 if [ -n "\$PIDS" ]; then
   kill \$PIDS
-  osascript -e 'display notification "기차 매크로 종료됨" with title "기차 매크로" sound name "Pop"'
+  osascript -e 'display notification "K-Rail 매크로 종료됨" with title "K-Rail 매크로" sound name "Pop"'
 else
-  osascript -e 'display notification "이미 종료된 상태입니다" with title "기차 매크로"'
+  osascript -e 'display notification "이미 종료된 상태입니다" with title "K-Rail 매크로"'
 fi
 EOF
 chmod +x "$QUIT_APP/Contents/MacOS/quit"
@@ -243,11 +243,11 @@ echo "  ✅ 설치 완료"
 echo "════════════════════════════════════════"
 echo ""
 echo "  사용법:"
-echo "    1. Launchpad → '기차 매크로' 검색 → 더블클릭"
+echo "    1. Launchpad → 'K-Rail 매크로' 검색 → 더블클릭"
 echo "    2. 브라우저가 자동으로 열림 (SRT / KTX 탭)"
 echo "    3. 두 탭 동시 사용 가능"
 echo ""
-echo "  종료: Launchpad → '기차 매크로 종료' 더블클릭"
+echo "  종료: Launchpad → 'K-Rail 매크로 종료' 더블클릭"
 echo ""
 
 read -p "  지금 바로 실행할까요? [y/N] " -n 1 -r

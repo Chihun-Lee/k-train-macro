@@ -33,7 +33,7 @@ jobs:
         # Crypto(pycryptodome)는 바이너리 확장이라 collect-all 필요.
         run: >
           pyinstaller --onefile --noconfirm --clean
-          --name k-train-macro
+          --name k-rail-macro
           --add-data "static;static"
           --collect-all uvicorn
           --collect-all keyring
@@ -47,11 +47,11 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: k-train-macro-windows
-          path: dist/k-train-macro.exe
+          name: k-rail-macro-windows
+          path: dist/k-rail-macro.exe
 
       - name: Attach to release (on tag)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/k-train-macro.exe
+          files: dist/k-rail-macro.exe
